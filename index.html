@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>圖片批次重新命名工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --panel: #ffffff;
+    --border: #e0dbcd;
+    --border-strong: #c9c2ae;
+    --text: #23211c;
+    --text-muted: #83796a;
+    --accent: #b1382a;
+    --accent-hover: #94301f;
+    --accent-soft: #f7ebe8;
+    --success: #4a7a5c;
+    --success-soft: #eef3ee;
+    --warn-soft: #faf7ee;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    padding: 28px 20px 60px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1040px; margin: 0 auto; }
+
+  .eyebrow {
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 6px;
+  }
+  h1 { font-size: 23px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 18px; }
+
+  .badge-safe {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1.5px solid var(--success); color: var(--success);
+    padding: 6px 14px; font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; border-radius: 3px;
+    transform: rotate(-1deg);
+    margin-bottom: 26px;
+    background: var(--success-soft);
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 13.5px; font-weight: 700; margin: 0 0 16px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--text); color: var(--panel);
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  #dropZone {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: 6px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    color: var(--text-muted);
+  }
+  #dropZone:hover, #dropZone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  #dropZone .icon { font-size: 26px; margin-bottom: 8px; }
+  #dropZone .main-line { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  #dropZone .hint-line { font-size: 12px; }
+  #fileInput { display: none; }
+
+  .mode-tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  .mode-tab {
+    padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text-muted);
+    transition: all 0.15s;
+  }
+  .mode-tab.active { background: var(--text); border-color: var(--text); color: var(--panel); }
+
+  .field-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .field-row:last-of-type { margin-bottom: 4px; }
+  .field { flex: 1; min-width: 110px; }
+  .field.grow-2 { flex: 2; min-width: 220px; }
+  .field label { display: block; font-size: 11.5px; color: var(--text-muted); margin-bottom: 5px; font-weight: 500; }
+  .field input[type="text"], .field input[type="number"], .field select {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 5px;
+    font-size: 13px; font-family: var(--mono); background: var(--bg); color: var(--text);
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+
+  .hint { font-size: 12px; color: var(--text-muted); margin-top: 12px; line-height: 1.7; }
+  .hint code {
+    background: var(--bg); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--text);
+  }
+  .hint.warn-text { color: var(--accent); font-weight: 500; }
+
+  .mode-panel { display: none; }
+  .mode-panel.active { display: block; }
+
+  .checkbox-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; padding-bottom: 9px; }
+  .checkbox-field input { width: auto; }
+
+  .group-section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); margin-bottom: 8px;
+  }
+  .group-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .group-row:last-child { border-bottom: none; }
+  .group-raw { font-family: var(--mono); font-size: 11px; color: var(--text-muted); flex: 1; word-break: break-all; }
+  .group-arrow { color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
+  .group-value-input {
+    width: 190px; flex-shrink: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 5px;
+    font-family: var(--mono); font-size: 12.5px; background: var(--bg); color: var(--text);
+  }
+  .group-value-input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 600;
+    font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+    border-bottom: 1.5px solid var(--border-strong);
+  }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr.duplicate { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  tr.unparsed { background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--text-muted); }
+  tr:last-child td { border-bottom: none; }
+
+  .thumb-wrap { width: 40px; height: 40px; position: relative; flex-shrink: 0; }
+  .thumb {
+    width: 40px; height: 40px; object-fit: cover; border-radius: 5px;
+    border: 1px solid var(--border); display: block; background: var(--bg);
+  }
+  .thumb-fallback {
+    width: 40px; height: 40px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--bg); align-items: center; justify-content: center; font-size: 15px;
+    display: none;
+  }
+  .idx-cell { color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+  .original-name { color: var(--text-muted); font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+  .new-name-input {
+    width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 5px;
+    font-family: var(--mono); font-size: 12.5px; background: transparent; color: var(--text);
+  }
+  .new-name-input:hover { border-color: var(--border); }
+  .new-name-input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .status-ok { color: var(--success); font-size: 12px; }
+  .status-dup { color: var(--accent); font-size: 12px; font-weight: 600; }
+  .status-warn { color: var(--text-muted); font-size: 11.5px; font-weight: 600; }
+  .row-actions { white-space: nowrap; }
+  .row-actions button {
+    border: none; background: none; cursor: pointer; color: var(--text-muted);
+    padding: 3px 6px; border-radius: 4px; font-size: 13px;
+  }
+  .row-actions button:hover { background: var(--bg); color: var(--text); }
+
+  .btn {
+    padding: 9px 16px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--text); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: white; padding: 10px 20px; font-weight: 600; }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border); background: var(--panel); }
+
+  .toolbar { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;}
+  .stats { font-size: 12.5px; color: var(--text-muted); font-family: var(--mono); }
+  .subtoolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .actions-bar { display: flex; align-items: center; gap: 14px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+  .empty-state {
+    text-align: center; padding: 34px; color: var(--text-muted); font-size: 13px;
+    border: 1px dashed var(--border); border-radius: 6px;
+  }
+  #progress { font-size: 12.5px; color: var(--accent); font-family: var(--mono); }
+
+  @media (max-width: 640px) {
+    .original-name, th:nth-child(3) { display: none; }
+    .field-row { flex-direction: column; }
+    .group-value-input { width: 130px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="eyebrow">批次處理工具</div>
+  <h1>圖片重新命名</h1>
+  <div class="subtitle">依照客戶規格批次重新命名圖片檔案</div>
+  <div class="badge-safe">✓ Lossless · 僅改檔名，不重新編碼，畫質 100% 保留</div>
+
+  <div class="panel">
+    <h2><span class="step-num">1</span>上傳圖片</h2>
+    <div id="dropZone">
+      <div class="icon">📥</div>
+      <div class="main-line">拖曳圖片到這裡，或點擊選擇檔案</div>
+      <div class="hint-line">支援 JPG、PNG、GIF、WebP、HEIC 等常見圖片格式，可一次選取多張</div>
+    </div>
+    <input type="file" id="fileInput" multiple accept="image/*">
+  </div>
+
+  <div class="panel">
+    <h2><span class="step-num">2</span>設定命名規則</h2>
+    <div class="mode-tabs">
+      <div class="mode-tab active" data-mode="auto">自動判別</div>
+      <div class="mode-tab" data-mode="template">範本套用</div>
+      <div class="mode-tab" data-mode="replace">尋找取代</div>
+    </div>
+
+    <div class="mode-panel active" id="autoPanel">
+      <div class="hint" style="margin-top:0;">
+        直接從原始檔名判別款號、樣品類型、版本、視角；配色會依原始標記自動分組，軟體匯出時常見的固定標籤（如產品類別、性別標示）會自動被抓出來剔除，下方只需確認每組配色名稱即可，不用逐張輸入。款號若結尾是「3碼數字+1個英文字母」（例如 WX5FA512R），會自動判定該字母為 Body Type 代碼，拆成 <code>款號-r</code> 的格式；視角一律補上前置減號，格式為 <code>-000／-180／-270</code>。<br>
+        辨識條件：檔名中需包含 <code>pre／ctr／col／fin／pro</code> 其中之一，其後接 <code>v+數字</code> 版本號，結尾為數字視角碼。無法辨識的檔案會標示提醒，可在下方表格直接手動輸入。
+      </div>
+      <div id="detectedGroupsWrap" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="mode-panel" id="templatePanel">
+      <div class="field-row">
+        <div class="field grow-2">
+          <label>命名範本</label>
+          <input type="text" id="templateInput" value="{original}_{n}" placeholder="例如：STYLE001_REG_{n}">
+        </div>
+        <div class="field">
+          <label>起始編號</label>
+          <input type="number" id="startNum" value="1" min="0">
+        </div>
+        <div class="field">
+          <label>編號位數</label>
+          <input type="number" id="paddingNum" value="3" min="1" max="10">
+        </div>
+        <div class="field">
+          <label>編號間隔</label>
+          <input type="number" id="stepNum" value="1" min="1">
+        </div>
+      </div>
+      <div class="hint">
+        可用變數：<code>{original}</code> 原始檔名（不含副檔名）　<code>{n}</code> 流水號　<code>{ext}</code> 副檔名<br>
+        其餘文字視為固定文字，例如範本 <code>STYLE001_REG_{n}</code> 會產生 STYLE001_REG_001.jpg、STYLE001_REG_002.jpg…（副檔名會自動保留）
+      </div>
+    </div>
+
+    <div class="mode-panel" id="replacePanel">
+      <div class="field-row">
+        <div class="field">
+          <label>尋找</label>
+          <input type="text" id="findInput" placeholder="要被取代的文字">
+        </div>
+        <div class="field">
+          <label>取代為</label>
+          <input type="text" id="replaceInput" placeholder="取代後的文字">
+        </div>
+        <div class="field" style="flex: 0 0 auto;">
+          <label>&nbsp;</label>
+          <label class="checkbox-field"><input type="checkbox" id="regexCheck"> 使用正規表達式</label>
+        </div>
+      </div>
+      <div class="hint">將原始檔名中符合「尋找」的文字取代為指定內容，副檔名不受影響</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <h2 style="margin:0;"><span class="step-num">3</span>預覽與下載</h2>
+      <div class="stats"><span id="statCount">0</span> 個檔案 · <span id="statSize">0 B</span></div>
+    </div>
+    <div class="subtoolbar">
+      <button class="btn" id="sortBtn">依檔名排序</button>
+      <button class="btn" id="resetBtn">重設手動修改</button>
+      <button class="btn" id="clearBtn">清除全部</button>
+    </div>
+    <div id="tableWrap">
+      <div class="empty-state" id="emptyState">尚未上傳任何圖片</div>
+      <table id="fileTable" style="display:none;">
+        <thead>
+          <tr>
+            <th></th><th>#</th><th>原始檔名</th><th>新檔名（可直接編輯）</th><th>狀態</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="fileTableBody"></tbody>
+      </table>
+    </div>
+    <div class="actions-bar">
+      <div id="zipNamePreview" class="stats"></div>
+      <div id="progress"></div>
+      <button class="btn btn-primary" id="downloadBtn">下載全部（ZIP）</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let files = [];
+let styleGroups = {};
+let colorGroups = {};
+const IMAGE_EXT = ['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg','heic','heif','avif'];
+const SAMPLE_TYPES = ['pre','ctr','col','fin','pro'];
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+
+function isImageFile(file) {
+  if (file.type && file.type.startsWith('image/')) return true;
+  const ext = file.name.split('.').pop().toLowerCase();
+  return IMAGE_EXT.includes(ext);
+}
+
+function splitExt(name) {
+  const dotIdx = name.lastIndexOf('.');
+  if (dotIdx <= 0) return { base: name, ext: '' };
+  return { base: name.slice(0, dotIdx), ext: name.slice(dotIdx + 1) };
+}
+
+function parseSourceFilename(originalName) {
+  const { base } = splitExt(originalName);
+  const tokens = base.split(/[-_]+/).filter(t => t.length > 0);
+  const sampleTypeIdx = tokens.findIndex(t => SAMPLE_TYPES.includes(t.toLowerCase()));
+  if (sampleTypeIdx <= 0) return null;
+  const style = tokens.slice(0, sampleTypeIdx).join('-');
+  const sampleType = tokens[sampleTypeIdx].toLowerCase();
+  const versionToken = tokens[sampleTypeIdx + 1];
+  if (!versionToken || !/^v\d+$/i.test(versionToken)) return null;
+  const version = versionToken.replace(/^v/i, '');
+  const rest = tokens.slice(sampleTypeIdx + 2);
+  if (rest.length < 1) return null;
+  const view = rest[rest.length - 1];
+  if (!/^\d+$/.test(view)) return null;
+  const colorTokensRaw = rest.slice(0, -1);
+  return {
+    style, sampleType, version, view, colorTokensRaw,
+    groupKey: colorTokensRaw.length > 0 ? colorTokensRaw.join('_') : '(無配色標記)'
+  };
+}
+
+function computeCommonSuffixLen(tokenArrays) {
+  const nonEmpty = tokenArrays.filter(t => t.length > 0);
+  if (nonEmpty.length <= 1) return 0;
+  const minLen = Math.min(...nonEmpty.map(t => t.length));
+  let suffixLen = 0;
+  for (let i = 1; i <= minLen; i++) {
+    const vals = nonEmpty.map(t => t[t.length - i].toLowerCase());
+    if (vals.every(v => v === vals[0])) suffixLen = i;
+    else break;
+  }
+  const maxSafe = Math.min(...nonEmpty.map(t => Math.max(t.length - 1, 0)));
+  return Math.min(suffixLen, maxSafe);
+}
+
+function formatStyleDefault(rawStyle) {
+  // Style codes commonly end in 3 digits + a single body-type letter (R/P/X…) with no
+  // separating dash in the source export. Split that into "STYLE-r" form when detected.
+  const match = rawStyle.match(/^(.*\d{3})([A-Za-z])$/);
+  if (match) {
+    return match[1].toUpperCase() + '-' + match[2].toLowerCase();
+  }
+  return rawStyle.toUpperCase();
+}
+
+function reparseAndGroup(preserveEdits) {
+  files.forEach(item => { item.parsed = parseSourceFilename(item.file.name); });
+  const parsedItems = files.filter(f => f.parsed);
+
+  const uniqueStyles = {};
+  parsedItems.forEach(f => { uniqueStyles[f.parsed.style] = true; });
+  const newStyleGroups = {};
+  Object.keys(uniqueStyles).forEach(key => {
+    newStyleGroups[key] = (preserveEdits && styleGroups[key] !== undefined) ? styleGroups[key] : formatStyleDefault(key);
+  });
+  styleGroups = newStyleGroups;
+
+  const uniqueColorTokenArrays = {};
+  parsedItems.forEach(f => { uniqueColorTokenArrays[f.parsed.groupKey] = f.parsed.colorTokensRaw; });
+  const suffixLen = computeCommonSuffixLen(Object.values(uniqueColorTokenArrays));
+  const newColorGroups = {};
+  Object.keys(uniqueColorTokenArrays).forEach(key => {
+    const tokens = uniqueColorTokenArrays[key];
+    const trimmed = suffixLen > 0 ? tokens.slice(0, tokens.length - suffixLen) : tokens;
+    const defaultVal = (trimmed.length > 0 ? trimmed : tokens).join('_').toLowerCase();
+    newColorGroups[key] = (preserveEdits && colorGroups[key] !== undefined) ? colorGroups[key] : (defaultVal || key);
+  });
+  colorGroups = newColorGroups;
+}
+
+function addFiles(fileListObj) {
+  Array.from(fileListObj).forEach(file => {
+    if (!isImageFile(file)) return;
+    files.push({
+      id: 'f' + Date.now() + Math.random().toString(36).slice(2),
+      file: file,
+      thumbUrl: URL.createObjectURL(file),
+      customName: null,
+      parsed: null
+    });
+  });
+  reparseAndGroup(true);
+  render();
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function sanitize(name) {
+  return name.replace(/[\\/:*?"<>|]/g, '_');
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function currentMode() {
+  return document.querySelector('.mode-tab.active').dataset.mode;
+}
+
+function computeNewName(item, index) {
+  if (item.customName !== null) return item.customName;
+  const { base, ext } = splitExt(item.file.name);
+  const mode = currentMode();
+
+  if (mode === 'auto') {
+    if (!item.parsed) return sanitize(item.file.name);
+    const p = item.parsed;
+    const style = styleGroups[p.style] !== undefined ? styleGroups[p.style] : p.style.toUpperCase();
+    const colorway = colorGroups[p.groupKey] !== undefined ? colorGroups[p.groupKey] : p.groupKey.toLowerCase();
+    let name = [style, colorway, p.sampleType, 'v' + p.version, p.view].join('-');
+    if (ext) name += '.' + ext;
+    return sanitize(name);
+  } else if (mode === 'template') {
+    const template = document.getElementById('templateInput').value || '{original}';
+    const startRaw = parseInt(document.getElementById('startNum').value, 10);
+    const stepRaw = parseInt(document.getElementById('stepNum').value, 10);
+    const paddingRaw = parseInt(document.getElementById('paddingNum').value, 10);
+    const start = isNaN(startRaw) ? 1 : startRaw;
+    const step = isNaN(stepRaw) ? 1 : stepRaw;
+    const padding = isNaN(paddingRaw) ? 3 : paddingRaw;
+    const num = start + index * step;
+    const paddedNum = String(Math.max(num, 0)).padStart(padding, '0');
+
+    let name = template.split('{original}').join(base).split('{n}').join(paddedNum).split('{ext}').join(ext);
+    if (ext && !name.toLowerCase().endsWith('.' + ext.toLowerCase())) {
+      name += '.' + ext;
+    }
+    return sanitize(name);
+  } else {
+    const find = document.getElementById('findInput').value;
+    const replace = document.getElementById('replaceInput').value;
+    const useRegex = document.getElementById('regexCheck').checked;
+    let newBase = base;
+    if (find) {
+      try {
+        newBase = useRegex ? base.replace(new RegExp(find, 'g'), replace) : base.split(find).join(replace);
+      } catch (e) { /* invalid regex pattern — keep original base */ }
+    }
+    return sanitize(newBase + (ext ? '.' + ext : ''));
+  }
+}
+
+function computeZipFilename(mode) {
+  if (mode === 'auto') {
+    const firstParsed = files.find(f => f.parsed);
+    if (firstParsed) {
+      const p = firstParsed.parsed;
+      return sanitize(`${p.style.toUpperCase()}-${p.sampleType}-v${p.version}.zip`);
+    }
+  }
+  return 'renamed_images.zip';
+}
+
+function groupRowHtml(key, value, type) {
+  const sampleFile = files.find(f => f.parsed && (type === 'style' ? f.parsed.style === key : f.parsed.groupKey === key));
+  const thumbHtml = sampleFile
+    ? `<div class="thumb-wrap"><img class="thumb" src="${sampleFile.thumbUrl}" alt=""></div>`
+    : `<div class="thumb-wrap"><div class="thumb"></div></div>`;
+  return `
+    <div class="group-row">
+      ${thumbHtml}
+      <div class="group-raw">${escapeHtml(key)}</div>
+      <span class="group-arrow">→</span>
+      <input type="text" class="group-value-input" data-group-type="${type}" data-group-key="${escapeHtml(key)}" value="${escapeHtml(value)}">
+    </div>
+  `;
+}
+
+function renderDetectedGroups() {
+  const wrap = document.getElementById('detectedGroupsWrap');
+  const styleKeys = Object.keys(styleGroups);
+  const colorKeys = Object.keys(colorGroups);
+  const unparsedCount = files.filter(f => !f.parsed).length;
+
+  if (styleKeys.length === 0 && colorKeys.length === 0) {
+    wrap.innerHTML = files.length === 0
+      ? ''
+      : '<div class="hint" style="margin:0;">上傳的檔名皆無法自動判別，請改用其他分頁手動設定，或在下方表格逐一輸入新檔名</div>';
+    return;
+  }
+
+  let html = '';
+  if (styleKeys.length > 0) {
+    html += '<div class="group-section-label">款號 Style</div>';
+    html += styleKeys.map(key => groupRowHtml(key, styleGroups[key], 'style')).join('');
+  }
+  if (colorKeys.length > 0) {
+    html += '<div class="group-section-label" style="margin-top:16px;">配色 Colorway</div>';
+    html += colorKeys.map(key => groupRowHtml(key, colorGroups[key], 'color')).join('');
+  }
+  if (unparsedCount > 0) {
+    html += `<div class="hint warn-text" style="margin-bottom:0;">⚠ 有 ${unparsedCount} 個檔案無法自動判別，已在下方表格標示，請手動輸入新檔名</div>`;
+  }
+  wrap.innerHTML = html;
+}
+
+document.getElementById('detectedGroupsWrap').addEventListener('input', e => {
+  if (e.target.classList.contains('group-value-input')) {
+    const type = e.target.dataset.groupType;
+    const key = e.target.dataset.groupKey;
+    if (type === 'style') styleGroups[key] = e.target.value;
+    else colorGroups[key] = e.target.value;
+    render();
+  }
+});
+
+function render() {
+  const emptyState = document.getElementById('emptyState');
+  const table = document.getElementById('fileTable');
+  const tbody = document.getElementById('fileTableBody');
+  const mode = currentMode();
+
+  if (mode === 'auto') renderDetectedGroups();
+
+  if (files.length === 0) {
+    emptyState.style.display = 'block';
+    table.style.display = 'none';
+    updateStats();
+    return;
+  }
+  emptyState.style.display = 'none';
+  table.style.display = 'table';
+
+  const newNames = files.map((item, idx) => computeNewName(item, idx));
+  const counts = {};
+  newNames.forEach(n => { const k = n.toLowerCase(); counts[k] = (counts[k] || 0) + 1; });
+
+  tbody.innerHTML = files.map((item, idx) => {
+    const newName = newNames[idx];
+    const isDup = counts[newName.toLowerCase()] > 1;
+    const isUnparsed = mode === 'auto' && !item.parsed && item.customName === null;
+    const rowClass = isUnparsed ? 'unparsed' : (isDup ? 'duplicate' : '');
+    let statusHtml = '<span class="status-ok">✓</span>';
+    if (isUnparsed) statusHtml = '<span class="status-warn">⚠ 需手動確認</span>';
+    else if (isDup) statusHtml = '<span class="status-dup">⚠ 重複</span>';
+    return `
+      <tr class="${rowClass}">
+        <td><div class="thumb-wrap">
+          <img class="thumb" src="${item.thumbUrl}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="thumb-fallback">🖼️</div>
+        </div></td>
+        <td class="idx-cell">${idx + 1}</td>
+        <td class="original-name">${escapeHtml(item.file.name)}</td>
+        <td><input type="text" class="new-name-input" data-id="${item.id}" value="${escapeHtml(newName)}"></td>
+        <td>${statusHtml}</td>
+        <td class="row-actions">
+          <button data-action="up" data-id="${item.id}" title="上移">↑</button>
+          <button data-action="down" data-id="${item.id}" title="下移">↓</button>
+          <button data-action="remove" data-id="${item.id}" title="移除">✕</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('statCount').textContent = files.length;
+  const totalBytes = files.reduce((sum, item) => sum + item.file.size, 0);
+  document.getElementById('statSize').textContent = formatSize(totalBytes);
+  const zipPreview = document.getElementById('zipNamePreview');
+  zipPreview.textContent = files.length > 0 ? '壓縮檔：' + computeZipFilename(currentMode()) : '';
+}
+
+document.getElementById('fileTableBody').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  const idx = files.findIndex(f => f.id === id);
+  if (idx === -1) return;
+
+  if (action === 'up' && idx > 0) {
+    [files[idx - 1], files[idx]] = [files[idx], files[idx - 1]];
+  } else if (action === 'down' && idx < files.length - 1) {
+    [files[idx + 1], files[idx]] = [files[idx], files[idx + 1]];
+  } else if (action === 'remove') {
+    URL.revokeObjectURL(files[idx].thumbUrl);
+    files.splice(idx, 1);
+    reparseAndGroup(true);
+  }
+  render();
+});
+
+document.getElementById('fileTableBody').addEventListener('change', e => {
+  if (e.target.classList.contains('new-name-input')) {
+    const id = e.target.dataset.id;
+    const item = files.find(f => f.id === id);
+    if (item) item.customName = e.target.value;
+  }
+});
+
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const mode = tab.dataset.mode;
+    document.getElementById('autoPanel').classList.toggle('active', mode === 'auto');
+    document.getElementById('templatePanel').classList.toggle('active', mode === 'template');
+    document.getElementById('replacePanel').classList.toggle('active', mode === 'replace');
+    render();
+  });
+});
+
+['templateInput', 'startNum', 'stepNum', 'paddingNum', 'findInput', 'replaceInput'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', render);
+  el.addEventListener('change', render);
+});
+document.getElementById('regexCheck').addEventListener('change', render);
+
+document.getElementById('sortBtn').addEventListener('click', () => {
+  files.sort((a, b) => a.file.name.localeCompare(b.file.name, undefined, { numeric: true }));
+  render();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  files.forEach(item => { item.customName = null; });
+  reparseAndGroup(false);
+  render();
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  files.forEach(item => URL.revokeObjectURL(item.thumbUrl));
+  files = [];
+  styleGroups = {};
+  colorGroups = {};
+  render();
+});
+
+document.getElementById('downloadBtn').addEventListener('click', async () => {
+  if (files.length === 0) { alert('請先上傳圖片'); return; }
+
+  const mode = currentMode();
+  if (mode === 'auto') {
+    const unparsedCount = files.filter(f => !f.parsed && f.customName === null).length;
+    if (unparsedCount > 0) {
+      const proceed = confirm(`有 ${unparsedCount} 個檔案無法自動判別，將保留原始檔名下載。是否繼續？`);
+      if (!proceed) return;
+    }
+  }
+
+  const newNames = files.map((item, idx) => computeNewName(item, idx));
+  const seen = new Set();
+  for (const n of newNames) {
+    const k = n.toLowerCase();
+    if (seen.has(k)) {
+      alert('偵測到重複的檔名：' + n + '\n請調整後再下載');
+      return;
+    }
+    seen.add(k);
+  }
+
+  const downloadBtn = document.getElementById('downloadBtn');
+  const progress = document.getElementById('progress');
+  downloadBtn.disabled = true;
+  progress.textContent = '打包中…';
+
+  try {
+    const zip = new JSZip();
+    files.forEach((item, idx) => { zip.file(newNames[idx], item.file); });
+
+    const content = await zip.generateAsync({ type: 'blob' }, metadata => {
+      progress.textContent = `打包中… ${metadata.percent.toFixed(0)}%`;
+    });
+
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = computeZipFilename(mode);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    progress.textContent = '完成！';
+    setTimeout(() => { progress.textContent = ''; }, 2500);
+  } catch (err) {
+    progress.textContent = '打包失敗：' + err.message;
+  } finally {
+    downloadBtn.disabled = false;
+  }
+});
+
+render();
+</script>
+</body>
+</html>
