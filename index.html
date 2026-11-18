@@ -134,6 +134,12 @@
     font-family: var(--mono); font-size: 12.5px; background: var(--bg); color: var(--text);
   }
   .group-value-input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .group-value-input.style-base-input { width: 100px; flex: 1 1 auto; min-width: 80px; }
+  .size-type-select {
+    width: 190px; flex-shrink: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 5px;
+    font-family: var(--mono); font-size: 12px; background: var(--bg); color: var(--text);
+  }
+  .size-type-select:focus { outline: none; border-color: var(--accent); background: var(--panel); }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th {
@@ -145,6 +151,8 @@
   tr.duplicate { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
   tr.unparsed { background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--text-muted); }
   tr:last-child td { border-bottom: none; }
+  .view-col { display: none; }
+  table.mode-auto .view-col { display: table-cell; }
 
   .thumb-wrap { width: 40px; height: 40px; position: relative; flex-shrink: 0; }
   .thumb {
@@ -164,6 +172,11 @@
   }
   .new-name-input:hover { border-color: var(--border); }
   .new-name-input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .view-select {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px;
+    font-family: var(--mono); font-size: 12px; background: var(--panel); color: var(--text);
+  }
+  .view-select:focus { outline: none; border-color: var(--accent); }
   .status-ok { color: var(--success); font-size: 12px; }
   .status-dup { color: var(--accent); font-size: 12px; font-weight: 600; }
   .status-warn { color: var(--text-muted); font-size: 11.5px; font-weight: 600; }
@@ -200,6 +213,8 @@
     .original-name, th:nth-child(3) { display: none; }
     .field-row { flex-direction: column; }
     .group-value-input { width: 130px; }
+    .group-value-input.style-base-input { width: 90px; }
+    .size-type-select { width: 150px; font-size: 11px; }
   }
 </style>
 </head>
@@ -230,8 +245,25 @@
 
     <div class="mode-panel active" id="autoPanel">
       <div class="hint" style="margin-top:0;">
-        直接從原始檔名判別款號、樣品類型、版本、視角；配色會依原始標記自動分組，軟體匯出時常見的固定標籤（如產品類別、性別標示）會自動被抓出來剔除，下方只需確認每組配色名稱即可，不用逐張輸入。款號若結尾是「3碼數字+1個英文字母」（例如 WX5FA512R），會自動判定該字母為 Body Type 代碼，拆成 <code>款號-r</code> 的格式；視角一律補上前置減號，格式為 <code>-000／-180／-270</code>。<br>
-        辨識條件：檔名中需包含 <code>pre／ctr／col／fin／pro</code> 其中之一，其後接 <code>v+數字</code> 版本號，結尾為數字視角碼。無法辨識的檔案會標示提醒，可在下方表格直接手動輸入。
+        直接從原始檔名判別款號、Size Type、配色、視角，每一段都保留手動調整空間。配色會依原始標記自動分組，軟體匯出時常見的固定標籤（如產品類別、性別標示）會自動被抓出來剔除，下方只需確認每組配色名稱即可，不用逐張輸入；<strong>配色只會在樣品類型為 <code>col</code> 或 <code>fin</code> 時才加入檔名，其餘樣品類型會自動省略這一段</strong>。<br>
+        款號若結尾是「3碼數字＋1個 Size Type 字母」（<code>R／X／P／G／K／D／H／E</code>，例如 WX5FA512R），會自動拆成款號本體＋Size Type 下拉選單；沒有偵測到則預設為 <code>R</code>，兩者都可手動修改。視角結尾需為數字碼，或 <code>FRONT／BACK／SIDE</code> 等文字（也支援單字母 <code>F／B／S</code>，可加 <code>RIGHT／LEFT</code> 前綴），會自動轉換成 <code>000／180／270</code>；若無法判別，下方表格會在「視角」欄位提供下拉選單手動選擇，並以提示標示待確認的檔案。<br>
+        若檔名中包含 <code>pre／ctr／col／fin／pro</code> 其中之一、其後接 <code>v+數字</code> 版本號，會一併自動判別；<strong>若原始檔名沒有這兩項資訊，會套用下方「樣品類型／版本」的設定</strong>。檔名中若夾雜 6 碼或 8 碼的日期（如批號日期 261106）會自動偵測並刪除，不會混進配色名稱。
+      </div>
+      <div class="field-row" style="margin-top:16px;">
+        <div class="field">
+          <label>樣品類型（原始檔名沒有時套用）</label>
+          <select id="fallbackSampleType">
+            <option value="pre">pre — 開發前 pre-development</option>
+            <option value="ctr">ctr — 對色 counter</option>
+            <option value="col">col — 色回 color run</option>
+            <option value="fin" selected>fin — 3D最終樣 3d final sample</option>
+            <option value="pro">pro — 預產 pre-production</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>版本（原始檔名沒有時套用）</label>
+          <input type="number" id="fallbackVersion" value="1" min="1">
+        </div>
       </div>
       <div id="detectedGroupsWrap" style="margin-top:16px;"></div>
     </div>
@@ -295,7 +327,7 @@
       <table id="fileTable" style="display:none;">
         <thead>
           <tr>
-            <th></th><th>#</th><th>原始檔名</th><th>新檔名（可直接編輯）</th><th>狀態</th><th></th>
+            <th></th><th>#</th><th>原始檔名</th><th>新檔名（可直接編輯）</th><th class="view-col">視角</th><th>狀態</th><th></th>
           </tr>
         </thead>
         <tbody id="fileTableBody"></tbody>
@@ -312,9 +344,22 @@
 <script>
 let files = [];
 let styleGroups = {};
+let sizeTypeGroups = {};
 let colorGroups = {};
 const IMAGE_EXT = ['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg','heic','heif','avif'];
 const SAMPLE_TYPES = ['pre','ctr','col','fin','pro'];
+const SIZE_TYPES = [
+  { code: 'r', label: "R — Regular" },
+  { code: 'x', label: "X — Big Men" },
+  { code: 'p', label: "P — Plus (Women's / Big Girl's Kids)" },
+  { code: 'g', label: "G — Kids 4-12" },
+  { code: 'k', label: "K — Kids 12M-5T" },
+  { code: 'd', label: "D — Baby (Newborn-24M)" },
+  { code: 'h', label: "H — Kids Big Boy 8-20" },
+  { code: 'e', label: "E — Petite" }
+];
+const SIZE_TYPE_CODES = SIZE_TYPES.map(s => s.code);
+const VIEW_TEXT_MAP = { front: '000', back: '180', side: '270', f: '000', b: '180', s: '270' };
 
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -341,25 +386,79 @@ function splitExt(name) {
   return { base: name.slice(0, dotIdx), ext: name.slice(dotIdx + 1) };
 }
 
+function looksLikeDateToken(token) {
+  // Catches plain numeric date codes with no separators of their own (already split
+  // out as one token by the main tokenizer), e.g. a 261106 (YYMMDD) lot/batch date
+  // sitting between the style and the real colorway. Validates month/day so an
+  // unrelated 6- or 8-digit code isn't mistaken for one.
+  if (/^\d{6}$/.test(token)) {
+    const mm = parseInt(token.slice(2, 4), 10);
+    const dd = parseInt(token.slice(4, 6), 10);
+    return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
+  }
+  if (/^\d{8}$/.test(token)) {
+    const mm = parseInt(token.slice(4, 6), 10);
+    const dd = parseInt(token.slice(6, 8), 10);
+    return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
+  }
+  return false;
+}
+
 function parseSourceFilename(originalName) {
   const { base } = splitExt(originalName);
-  const tokens = base.split(/[-_]+/).filter(t => t.length > 0);
-  const sampleTypeIdx = tokens.findIndex(t => SAMPLE_TYPES.includes(t.toLowerCase()));
-  if (sampleTypeIdx <= 0) return null;
-  const style = tokens.slice(0, sampleTypeIdx).join('-');
-  const sampleType = tokens[sampleTypeIdx].toLowerCase();
-  const versionToken = tokens[sampleTypeIdx + 1];
-  if (!versionToken || !/^v\d+$/i.test(versionToken)) return null;
-  const version = versionToken.replace(/^v/i, '');
-  const rest = tokens.slice(sampleTypeIdx + 2);
-  if (rest.length < 1) return null;
-  const view = rest[rest.length - 1];
-  if (!/^\d+$/.test(view)) return null;
-  const colorTokensRaw = rest.slice(0, -1);
+  const tokens = base.split(/[-_\s]+/).filter(t => t.length > 0);
+  if (tokens.length < 1) return null;
+  const style = tokens[0];
+
+  let sampleType = null, version = null, restStart = 1;
+  const sampleTypeIdx = tokens.findIndex((t, i) => i > 0 && SAMPLE_TYPES.includes(t.toLowerCase()));
+  if (sampleTypeIdx > 0) {
+    const versionToken = tokens[sampleTypeIdx + 1];
+    if (versionToken && /^v\d+$/i.test(versionToken)) {
+      sampleType = tokens[sampleTypeIdx].toLowerCase();
+      version = versionToken.replace(/^v/i, '');
+      restStart = sampleTypeIdx + 2;
+    }
+  }
+
+  // Drop any date-looking token (a lot/batch date embedded in the filename) before
+  // it can pollute the colorway or get mistaken for a numeric view code.
+  const rest = tokens.slice(restStart).filter(t => !looksLikeDateToken(t));
+
+  // View is "best-effort": when it can't be determined we no longer fail the whole
+  // file — style / colorway / sample type are still usable, and the UI offers a
+  // per-row view dropdown as a manual fallback instead of forcing the entire
+  // filename to be retyped by hand.
+  let view = null;
+  let colorTokensRaw = rest;
+  if (rest.length > 0) {
+    const lastToken = rest[rest.length - 1];
+    if (/^\d+$/.test(lastToken)) {
+      view = lastToken;
+      colorTokensRaw = rest.slice(0, -1);
+    } else if (VIEW_TEXT_MAP[lastToken.toLowerCase()]) {
+      view = VIEW_TEXT_MAP[lastToken.toLowerCase()];
+      const secondLast = rest.length >= 2 ? rest[rest.length - 2].toLowerCase() : '';
+      colorTokensRaw = (secondLast === 'right' || secondLast === 'left') ? rest.slice(0, -2) : rest.slice(0, -1);
+    }
+  }
+
   return {
     style, sampleType, version, view, colorTokensRaw,
     groupKey: colorTokensRaw.length > 0 ? colorTokensRaw.join('_') : '(無配色標記)'
   };
+}
+
+function getEffectiveView(item) {
+  if (item.viewOverride !== null && item.viewOverride !== undefined) return item.viewOverride;
+  if (item.parsed && item.parsed.view !== null) return item.parsed.view;
+  return '000';
+}
+
+function viewIsUnconfirmed(item) {
+  return !!item.parsed && item.parsed.view === null &&
+    (item.viewOverride === null || item.viewOverride === undefined) &&
+    item.customName === null;
 }
 
 function computeCommonSuffixLen(tokenArrays) {
@@ -376,14 +475,16 @@ function computeCommonSuffixLen(tokenArrays) {
   return Math.min(suffixLen, maxSafe);
 }
 
-function formatStyleDefault(rawStyle) {
-  // Style codes commonly end in 3 digits + a single body-type letter (R/P/X…) with no
-  // separating dash in the source export. Split that into "STYLE-r" form when detected.
+function splitStyleSizeType(rawStyle) {
+  // Style codes commonly end in 3 digits + a single size-type letter (R/X/P/G/K/D/H/E)
+  // with no separating dash in the source export, e.g. "WX5FA512R". Split that into a
+  // base style and a size-type code when the trailing letter is one of the known
+  // codes; otherwise default the size type to 'r' (Regular) and leave it editable.
   const match = rawStyle.match(/^(.*\d{3})([A-Za-z])$/);
-  if (match) {
-    return match[1].toUpperCase() + '-' + match[2].toLowerCase();
+  if (match && SIZE_TYPE_CODES.includes(match[2].toLowerCase())) {
+    return { base: match[1].toUpperCase(), sizeType: match[2].toLowerCase() };
   }
-  return rawStyle.toUpperCase();
+  return { base: rawStyle.toUpperCase(), sizeType: 'r' };
 }
 
 function reparseAndGroup(preserveEdits) {
@@ -393,10 +494,14 @@ function reparseAndGroup(preserveEdits) {
   const uniqueStyles = {};
   parsedItems.forEach(f => { uniqueStyles[f.parsed.style] = true; });
   const newStyleGroups = {};
+  const newSizeTypeGroups = {};
   Object.keys(uniqueStyles).forEach(key => {
-    newStyleGroups[key] = (preserveEdits && styleGroups[key] !== undefined) ? styleGroups[key] : formatStyleDefault(key);
+    const split = splitStyleSizeType(key);
+    newStyleGroups[key] = (preserveEdits && styleGroups[key] !== undefined) ? styleGroups[key] : split.base;
+    newSizeTypeGroups[key] = (preserveEdits && sizeTypeGroups[key] !== undefined) ? sizeTypeGroups[key] : split.sizeType;
   });
   styleGroups = newStyleGroups;
+  sizeTypeGroups = newSizeTypeGroups;
 
   const uniqueColorTokenArrays = {};
   parsedItems.forEach(f => { uniqueColorTokenArrays[f.parsed.groupKey] = f.parsed.colorTokensRaw; });
@@ -405,8 +510,12 @@ function reparseAndGroup(preserveEdits) {
   Object.keys(uniqueColorTokenArrays).forEach(key => {
     const tokens = uniqueColorTokenArrays[key];
     const trimmed = suffixLen > 0 ? tokens.slice(0, tokens.length - suffixLen) : tokens;
-    const defaultVal = (trimmed.length > 0 ? trimmed : tokens).join('_').toLowerCase();
-    newColorGroups[key] = (preserveEdits && colorGroups[key] !== undefined) ? colorGroups[key] : (defaultVal || key);
+    const defaultVal = (trimmed.length > 0 ? trimmed : tokens).join(' ').toLowerCase();
+    // When a group has no real colorway tokens at all (key is the "(無配色標記)"
+    // placeholder), default the editable value to blank rather than echoing that
+    // Chinese placeholder — it's only meant as a label in the raw-key column, never
+    // as text that ends up inside a client-facing filename.
+    newColorGroups[key] = (preserveEdits && colorGroups[key] !== undefined) ? colorGroups[key] : defaultVal;
   });
   colorGroups = newColorGroups;
 }
@@ -419,6 +528,7 @@ function addFiles(fileListObj) {
       file: file,
       thumbUrl: URL.createObjectURL(file),
       customName: null,
+      viewOverride: null,
       parsed: null
     });
   });
@@ -454,9 +564,20 @@ function computeNewName(item, index) {
   if (mode === 'auto') {
     if (!item.parsed) return sanitize(item.file.name);
     const p = item.parsed;
-    const style = styleGroups[p.style] !== undefined ? styleGroups[p.style] : p.style.toUpperCase();
-    const colorway = colorGroups[p.groupKey] !== undefined ? colorGroups[p.groupKey] : p.groupKey.toLowerCase();
-    let name = [style, colorway, p.sampleType, 'v' + p.version, p.view].join('-');
+    const split = splitStyleSizeType(p.style);
+    const style = styleGroups[p.style] !== undefined ? styleGroups[p.style] : split.base;
+    const sizeType = (sizeTypeGroups[p.style] !== undefined ? sizeTypeGroups[p.style] : split.sizeType).toLowerCase();
+    const colorwayFallback = p.colorTokensRaw.length > 0 ? p.colorTokensRaw.join(' ').toLowerCase() : '';
+    const colorway = colorGroups[p.groupKey] !== undefined ? colorGroups[p.groupKey] : colorwayFallback;
+    const sampleType = p.sampleType !== null ? p.sampleType : document.getElementById('fallbackSampleType').value;
+    const versionRaw = p.version !== null ? p.version : document.getElementById('fallbackVersion').value.trim();
+    const version = versionRaw === '' ? '1' : versionRaw;
+    const view = getEffectiveView(item);
+    const needsColorway = (sampleType === 'col' || sampleType === 'fin');
+    const segments = [style, sizeType];
+    if (needsColorway && colorway) segments.push(colorway);
+    segments.push(sampleType, 'v' + version, view);
+    let name = segments.join('-');
     if (ext) name += '.' + ext;
     return sanitize(name);
   } else if (mode === 'template') {
@@ -494,14 +615,42 @@ function computeZipFilename(mode) {
     const firstParsed = files.find(f => f.parsed);
     if (firstParsed) {
       const p = firstParsed.parsed;
-      return sanitize(`${p.style.toUpperCase()}-${p.sampleType}-v${p.version}.zip`);
+      const split = splitStyleSizeType(p.style);
+      const style = styleGroups[p.style] !== undefined ? styleGroups[p.style] : split.base;
+      const sizeType = (sizeTypeGroups[p.style] !== undefined ? sizeTypeGroups[p.style] : split.sizeType).toLowerCase();
+      const sampleType = p.sampleType !== null ? p.sampleType : document.getElementById('fallbackSampleType').value;
+      const versionRaw = p.version !== null ? p.version : document.getElementById('fallbackVersion').value.trim();
+      const version = versionRaw === '' ? '1' : versionRaw;
+      return sanitize(`${style}${sizeType.toUpperCase()}-${sampleType}-v${version}.zip`);
     }
   }
   return 'renamed_images.zip';
 }
 
-function groupRowHtml(key, value, type) {
-  const sampleFile = files.find(f => f.parsed && (type === 'style' ? f.parsed.style === key : f.parsed.groupKey === key));
+function styleGroupRowHtml(key) {
+  const sampleFile = files.find(f => f.parsed && f.parsed.style === key);
+  const thumbHtml = sampleFile
+    ? `<div class="thumb-wrap"><img class="thumb" src="${sampleFile.thumbUrl}" alt=""></div>`
+    : `<div class="thumb-wrap"><div class="thumb"></div></div>`;
+  const defaultSplit = splitStyleSizeType(key);
+  const baseVal = styleGroups[key] !== undefined ? styleGroups[key] : defaultSplit.base;
+  const sizeTypeVal = sizeTypeGroups[key] !== undefined ? sizeTypeGroups[key] : defaultSplit.sizeType;
+  const options = SIZE_TYPES.map(st =>
+    `<option value="${st.code}" ${st.code === sizeTypeVal ? 'selected' : ''}>${escapeHtml(st.label)}</option>`
+  ).join('');
+  return `
+    <div class="group-row">
+      ${thumbHtml}
+      <div class="group-raw">${escapeHtml(key)}</div>
+      <span class="group-arrow">→</span>
+      <input type="text" class="group-value-input style-base-input" data-group-type="style" data-group-key="${escapeHtml(key)}" value="${escapeHtml(baseVal)}">
+      <select class="size-type-select" data-size-type-key="${escapeHtml(key)}">${options}</select>
+    </div>
+  `;
+}
+
+function colorGroupRowHtml(key, value) {
+  const sampleFile = files.find(f => f.parsed && f.parsed.groupKey === key);
   const thumbHtml = sampleFile
     ? `<div class="thumb-wrap"><img class="thumb" src="${sampleFile.thumbUrl}" alt=""></div>`
     : `<div class="thumb-wrap"><div class="thumb"></div></div>`;
@@ -510,7 +659,7 @@ function groupRowHtml(key, value, type) {
       ${thumbHtml}
       <div class="group-raw">${escapeHtml(key)}</div>
       <span class="group-arrow">→</span>
-      <input type="text" class="group-value-input" data-group-type="${type}" data-group-key="${escapeHtml(key)}" value="${escapeHtml(value)}">
+      <input type="text" class="group-value-input" data-group-type="color" data-group-key="${escapeHtml(key)}" value="${escapeHtml(value)}">
     </div>
   `;
 }
@@ -520,6 +669,7 @@ function renderDetectedGroups() {
   const styleKeys = Object.keys(styleGroups);
   const colorKeys = Object.keys(colorGroups);
   const unparsedCount = files.filter(f => !f.parsed).length;
+  const unconfirmedViewCount = files.filter(viewIsUnconfirmed).length;
 
   if (styleKeys.length === 0 && colorKeys.length === 0) {
     wrap.innerHTML = files.length === 0
@@ -530,15 +680,18 @@ function renderDetectedGroups() {
 
   let html = '';
   if (styleKeys.length > 0) {
-    html += '<div class="group-section-label">款號 Style</div>';
-    html += styleKeys.map(key => groupRowHtml(key, styleGroups[key], 'style')).join('');
+    html += '<div class="group-section-label">款號 Style ＋ Size Type</div>';
+    html += styleKeys.map(key => styleGroupRowHtml(key)).join('');
   }
   if (colorKeys.length > 0) {
-    html += '<div class="group-section-label" style="margin-top:16px;">配色 Colorway</div>';
-    html += colorKeys.map(key => groupRowHtml(key, colorGroups[key], 'color')).join('');
+    html += '<div class="group-section-label" style="margin-top:16px;">配色 Colorway<span style="text-transform:none;font-weight:400;letter-spacing:normal;"> （僅 col／fin 樣品類型會顯示在檔名中）</span></div>';
+    html += colorKeys.map(key => colorGroupRowHtml(key, colorGroups[key])).join('');
   }
   if (unparsedCount > 0) {
     html += `<div class="hint warn-text" style="margin-bottom:0;">⚠ 有 ${unparsedCount} 個檔案無法自動判別，已在下方表格標示，請手動輸入新檔名</div>`;
+  }
+  if (unconfirmedViewCount > 0) {
+    html += `<div class="hint warn-text" style="margin-bottom:0;">⚠ 有 ${unconfirmedViewCount} 個檔案無法自動判別視角，請於下方表格「視角」欄位手動選擇</div>`;
   }
   wrap.innerHTML = html;
 }
@@ -552,6 +705,20 @@ document.getElementById('detectedGroupsWrap').addEventListener('input', e => {
     render();
   }
 });
+document.getElementById('detectedGroupsWrap').addEventListener('change', e => {
+  if (e.target.classList.contains('size-type-select')) {
+    sizeTypeGroups[e.target.dataset.sizeTypeKey] = e.target.value;
+    render();
+  }
+});
+
+function viewOptionHtml(item) {
+  const effective = getEffectiveView(item);
+  const opts = [['000', '000 正面'], ['180', '180 背面'], ['270', '270 側面']];
+  return opts.map(([v, label]) =>
+    `<option value="${v}" ${v === effective ? 'selected' : ''}>${label}</option>`
+  ).join('');
+}
 
 function render() {
   const emptyState = document.getElementById('emptyState');
@@ -559,6 +726,7 @@ function render() {
   const tbody = document.getElementById('fileTableBody');
   const mode = currentMode();
 
+  table.classList.toggle('mode-auto', mode === 'auto');
   if (mode === 'auto') renderDetectedGroups();
 
   if (files.length === 0) {
@@ -578,9 +746,11 @@ function render() {
     const newName = newNames[idx];
     const isDup = counts[newName.toLowerCase()] > 1;
     const isUnparsed = mode === 'auto' && !item.parsed && item.customName === null;
-    const rowClass = isUnparsed ? 'unparsed' : (isDup ? 'duplicate' : '');
+    const needsViewConfirm = mode === 'auto' && viewIsUnconfirmed(item);
+    const rowClass = isUnparsed ? 'unparsed' : (needsViewConfirm ? 'unparsed' : (isDup ? 'duplicate' : ''));
     let statusHtml = '<span class="status-ok">✓</span>';
     if (isUnparsed) statusHtml = '<span class="status-warn">⚠ 需手動確認</span>';
+    else if (needsViewConfirm) statusHtml = '<span class="status-warn">⚠ 請確認視角</span>';
     else if (isDup) statusHtml = '<span class="status-dup">⚠ 重複</span>';
     return `
       <tr class="${rowClass}">
@@ -591,6 +761,7 @@ function render() {
         <td class="idx-cell">${idx + 1}</td>
         <td class="original-name">${escapeHtml(item.file.name)}</td>
         <td><input type="text" class="new-name-input" data-id="${item.id}" value="${escapeHtml(newName)}"></td>
+        <td class="view-col"><select class="view-select" data-id="${item.id}">${viewOptionHtml(item)}</select></td>
         <td>${statusHtml}</td>
         <td class="row-actions">
           <button data-action="up" data-id="${item.id}" title="上移">↑</button>
@@ -637,6 +808,14 @@ document.getElementById('fileTableBody').addEventListener('change', e => {
     const id = e.target.dataset.id;
     const item = files.find(f => f.id === id);
     if (item) item.customName = e.target.value;
+  } else if (e.target.classList.contains('view-select')) {
+    const id = e.target.dataset.id;
+    const item = files.find(f => f.id === id);
+    if (item) {
+      item.viewOverride = e.target.value;
+      item.customName = null;
+      render();
+    }
   }
 });
 
@@ -652,7 +831,7 @@ document.querySelectorAll('.mode-tab').forEach(tab => {
   });
 });
 
-['templateInput', 'startNum', 'stepNum', 'paddingNum', 'findInput', 'replaceInput'].forEach(id => {
+['fallbackSampleType', 'fallbackVersion', 'templateInput', 'startNum', 'stepNum', 'paddingNum', 'findInput', 'replaceInput'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener('input', render);
   el.addEventListener('change', render);
@@ -665,7 +844,7 @@ document.getElementById('sortBtn').addEventListener('click', () => {
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
-  files.forEach(item => { item.customName = null; });
+  files.forEach(item => { item.customName = null; item.viewOverride = null; });
   reparseAndGroup(false);
   render();
 });
@@ -674,6 +853,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   files.forEach(item => URL.revokeObjectURL(item.thumbUrl));
   files = [];
   styleGroups = {};
+  sizeTypeGroups = {};
   colorGroups = {};
   render();
 });
@@ -684,8 +864,12 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
   const mode = currentMode();
   if (mode === 'auto') {
     const unparsedCount = files.filter(f => !f.parsed && f.customName === null).length;
-    if (unparsedCount > 0) {
-      const proceed = confirm(`有 ${unparsedCount} 個檔案無法自動判別，將保留原始檔名下載。是否繼續？`);
+    const unconfirmedViewCount = files.filter(viewIsUnconfirmed).length;
+    if (unparsedCount > 0 || unconfirmedViewCount > 0) {
+      const parts = [];
+      if (unparsedCount > 0) parts.push(`${unparsedCount} 個檔案無法自動判別（將保留原始檔名）`);
+      if (unconfirmedViewCount > 0) parts.push(`${unconfirmedViewCount} 個檔案視角未確認（將套用預設視角 000）`);
+      const proceed = confirm(parts.join('；') + '。是否繼續下載？');
       if (!proceed) return;
     }
   }
